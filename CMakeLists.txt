@@ -112,12 +112,41 @@ add_library(im_operator STATIC
     src/calibration/dispatch.cpp
     src/calibration/three_point.cpp
     src/calibration/right_triangle.cpp
+    src/hdr/dispatch.cpp
+    src/hdr/reinhard.cpp
+    src/hdr/reinhard_ext.cpp
+    src/hdr/filmic_aces.cpp
+    src/hdr/hable.cpp
+    src/hdr/drago.cpp
+    src/hdr/adaptive_local.cpp
+    src/hdr/exponential.cpp
+    src/hdr/logarithmic.cpp
+    src/hdr/transfer.cpp
+    src/hdr/cuda_dispatch.cpp
+    src/black_level/dispatch.cpp
+    src/black_level/per_channel.cpp
+    src/black_level/global.cpp
+    src/defect_correct/dispatch.cpp
+    src/defect_correct/adaptive.cpp
+    src/defect_correct/map_based.cpp
+    src/highlight_reconstruct/dispatch.cpp
+    src/highlight_reconstruct/channel_guided.cpp
+    src/highlight_reconstruct/gradient_based.cpp
+    src/local_contrast/dispatch.cpp
+    src/local_contrast/unsharp.cpp
+    src/local_contrast/bilateral.cpp
+    src/color_calibration/common.cpp
+    src/color_calibration/detect_chart.cpp
+    src/color_calibration/extract_patches.cpp
+    src/color_calibration/solve_ccm.cpp
+    src/color_calibration/generate_linearization.cpp
 )
 
 if(IM_OPERATOR_ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
     target_sources(im_operator PRIVATE
         src/algorithms/cuda_kernels.cu
         src/jpeg_codec/jpeg_codec_kernels.cu
+        src/hdr/hdr_kernels.cu
     )
     target_compile_definitions(im_operator PRIVATE IM_OPERATOR_HAS_CUDA)
 
@@ -140,6 +169,7 @@ if(IM_OPERATOR_ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
     set_source_files_properties(
         src/algorithms/cuda_kernels.cu
         src/jpeg_codec/jpeg_codec_kernels.cu
+        src/hdr/hdr_kernels.cu
         PROPERTIES COMPILE_OPTIONS "--expt-relaxed-constexpr"
     )
 endif()
@@ -160,6 +190,12 @@ target_include_directories(im_operator
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/saturation>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/jpeg_codec>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/calibration>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/hdr>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/black_level>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/defect_correct>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/highlight_reconstruct>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/local_contrast>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/color_calibration>
 )
 
 target_compile_features(im_operator PUBLIC cxx_std_17)
@@ -242,6 +278,12 @@ if(IM_OPERATOR_BUILD_UNIT_TESTS)
         tests/unit/test_saturation.cpp
         tests/unit/test_jpeg_codec.cpp
         tests/unit/test_calibration.cpp
+        tests/unit/test_hdr.cpp
+        tests/unit/test_black_level.cpp
+        tests/unit/test_defect_correct.cpp
+        tests/unit/test_highlight_reconstruct.cpp
+        tests/unit/test_local_contrast.cpp
+        tests/unit/test_color_calibration.cpp
     )
     target_link_libraries(im_operator_unit_tests PRIVATE im_operator gtest_main)
 
@@ -297,6 +339,24 @@ install(FILES include/jpeg_codec/algorithms.hpp  DESTINATION include/jpeg_codec)
 install(FILES include/calibration.h DESTINATION include)
 install(FILES include/calibration/types.hpp      DESTINATION include/calibration)
 install(FILES include/calibration/algorithms.hpp  DESTINATION include/calibration)
+install(FILES include/black_level.h DESTINATION include)
+install(FILES include/black_level/types.hpp      DESTINATION include/black_level)
+install(FILES include/black_level/algorithms.hpp  DESTINATION include/black_level)
+install(FILES include/defect_correct.h DESTINATION include)
+install(FILES include/defect_correct/types.hpp      DESTINATION include/defect_correct)
+install(FILES include/defect_correct/algorithms.hpp  DESTINATION include/defect_correct)
+install(FILES include/highlight_reconstruct.h DESTINATION include)
+install(FILES include/highlight_reconstruct/types.hpp      DESTINATION include/highlight_reconstruct)
+install(FILES include/highlight_reconstruct/algorithms.hpp  DESTINATION include/highlight_reconstruct)
+install(FILES include/local_contrast.h DESTINATION include)
+install(FILES include/local_contrast/types.hpp      DESTINATION include/local_contrast)
+install(FILES include/local_contrast/algorithms.hpp  DESTINATION include/local_contrast)
+install(FILES include/color_calibration.h DESTINATION include)
+install(FILES include/color_calibration/types.hpp      DESTINATION include/color_calibration)
+install(FILES include/color_calibration/algorithms.hpp  DESTINATION include/color_calibration)
+install(FILES include/hdr.h DESTINATION include)
+install(FILES include/hdr/types.hpp      DESTINATION include/hdr)
+install(FILES include/hdr/algorithms.hpp  DESTINATION include/hdr)
 
 include(CMakePackageConfigHelpers)
 write_basic_package_version_file(

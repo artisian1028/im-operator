@@ -62,6 +62,8 @@ DemosaicError process_prism(const uint8_t* bayer, uint8_t* rgb,
     std::fill(PQ_Dir.begin(), PQ_Dir.end(), 0.5f);
     std::fill(L.begin(), L.end(), 0.0f);
     std::fill(M.begin(), M.end(), 0.0f);
+    std::fill(L_tmp.begin(), L_tmp.end(), 0.0f);
+    std::fill(M_tmp.begin(), M_tmp.end(), 0.0f);
 
     for (int row = 0; row < height; row++) {
         for (int col = 0; col < width; col++) {
