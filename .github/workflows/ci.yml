@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  # ── Windows (MSVC, CMake + Ninja) ─────────────────────────────────
+  windows-msvc:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        config: [Debug, Release]
+        cuda: [ON, OFF]
+        exclude:
+          # Don't waste matrix space on CUDA=ON for Debug when
+          # neither CI runner has a physical GPU anyway
+          - config: Debug
+            cuda: ON
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: >
+          cmake -B build -G "Ninja"
+          -DCMAKE_CXX_COMPILER=cl
+          -DIM_OPERATOR_ENABLE_CUDA=${{ matrix.cuda }}
+          -DIM_OPERATOR_BUILD_UNIT_TESTS=ON
+          -DIM_OPERATOR_BUILD_TESTS=ON
+          -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.config }}
+
+      - name: Run unit tests
+        run: ctest --test-dir build --output-on-failure -C ${{ matrix.config }}
+
+  # ── Linux (GCC) ───────────────────────────────────────────────────
+  linux-gcc:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config: [Debug, RelWithDebInfo]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenMP
+        run: sudo apt-get install -y libomp-dev
+
+      - name: Configure CMake
+        run: >
+          cmake -B build -G "Ninja"
+          -DIM_OPERATOR_ENABLE_CUDA=OFF
+          -DIM_OPERATOR_BUILD_UNIT_TESTS=ON
+          -DIM_OPERATOR_BUILD_TESTS=ON
+          -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.config }}
+
+      - name: Run unit tests
+        run: ctest --test-dir build --output-on-failure -C ${{ matrix.config }}
+
+  # ── Linux (Clang) ─────────────────────────────────────────────────
+  linux-clang:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y libomp-dev
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 18
+
+      - name: Configure CMake
+        run: >
+          cmake -B build -G "Ninja"
+          -DCMAKE_C_COMPILER=clang-18
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DIM_OPERATOR_ENABLE_CUDA=OFF
+          -DIM_OPERATOR_BUILD_UNIT_TESTS=ON
+          -DIM_OPERATOR_BUILD_TESTS=ON
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run unit tests
+        run: ctest --test-dir build --output-on-failure
+
+  # ── Sanitizer build (Linux, Clang + ASan/UBSan) ───────────────────
+  sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y libomp-dev
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 18
+
+      - name: Configure CMake (ASan + UBSan)
+        run: >
+          cmake -B build -G "Ninja"
+          -DCMAKE_C_COMPILER=clang-18
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_LINKER_FLAGS="-fsanitize=address,undefined"
+          -DIM_OPERATOR_ENABLE_CUDA=OFF
+          -DIM_OPERATOR_BUILD_UNIT_TESTS=ON
+          -DIM_OPERATOR_BUILD_TESTS=ON
+          -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run unit tests (ASan/UBSan)
+        run: ctest --test-dir build --output-on-failure

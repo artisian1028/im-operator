@@ -1,0 +1,71 @@
+# ===== 构建输出 =====
+build*/
+cmake-build-*/
+out/
+
+# ===== CMake 生成文件 =====
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+CTestTestfile.cmake
+DartConfiguration.tcl
+
+# ===== 编译产物 =====
+*.o
+*.obj
+*.lo
+*.exe
+*.dll
+*.so
+*.so.*
+*.a
+*.lib
+*.exp
+*.dylib
+*.dSYM/
+
+# ===== CUDA 中间文件 =====
+*.ptx
+*.cubin
+*.fatbin
+
+# ===== IDE / 编辑器 =====
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.user
+*.suo
+*.vcxproj.user
+*.sln.docstates
+*.tmp
+*.TMP
+
+# ===== 操作系统 =====
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+Desktop.ini
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ===== 测试输出 =====
+Testing/
+*.log
+
+# ===== 压缩包 =====
+*.zip
+*.tar.gz
+*.tgz
+*.7z
+*.rar
