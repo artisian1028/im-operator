@@ -75,6 +75,14 @@ WhiteBalanceError process_white_balance(const uint8_t* input, uint8_t* output,
                                                             channels, bit_depth);
     if (err != WhiteBalanceError::Ok) return err;
 
+    if (has_cuda() && algorithm == WhiteBalanceAlgorithm::MANUAL) {
+        WhiteBalanceError cuda_err = process_white_balance_cuda(input, output, width, height,
+                                                                 channels, bit_depth,
+                                                                 manual_gains.r_gain, manual_gains.g_gain,
+                                                                 manual_gains.b_gain);
+        if (cuda_err == WhiteBalanceError::Ok) return cuda_err;
+    }
+
     WBFunc func = find_wb_func(algorithm);
     if (!func) {
         return WhiteBalanceError::InternalError;

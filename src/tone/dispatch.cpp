@@ -71,6 +71,12 @@ ToneError process_tone(const uint8_t* input, uint8_t* output,
                                           channels, bit_depth);
     if (err != ToneError::Ok) return err;
 
+    if (has_cuda()) {
+        ToneError cuda_err = process_tone_cuda(input, output, width, height, channels,
+                                                algorithm, bit_depth, params);
+        if (cuda_err == ToneError::Ok) return cuda_err;
+    }
+
     ToneFunc func = find_tone_func(algorithm);
     if (!func) {
         return ToneError::InternalError;

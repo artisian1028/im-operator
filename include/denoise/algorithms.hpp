@@ -48,6 +48,12 @@ DenoiseError process_wavelet(const uint8_t* input, uint8_t* output,
                              int width, int height, int channels,
                              int bit_depth, float strength);
 
+// CUDA support
+bool has_cuda();
+DenoiseError process_denoise_cuda(const uint8_t* input, uint8_t* output,
+                                   int width, int height, int channels,
+                                   DenoiseAlgorithm algorithm, int bit_depth, float strength);
+
 } // namespace denoise
 
 #endif // DENOISE_ALGORITHMS_HPP

@@ -48,6 +48,13 @@ LocalContrastError process_local_contrast(const uint8_t* input, uint8_t* output,
                                            const LocalContrastParams& params) {
     auto err = validate_local_contrast_inputs(input, output, width, height, channels, bit_depth);
     if (err != LocalContrastError::Ok) return err;
+
+    if (has_cuda()) {
+        LocalContrastError cuda_err = process_local_contrast_cuda(input, output, width, height,
+                                                                    channels, bit_depth, params);
+        if (cuda_err == LocalContrastError::Ok) return cuda_err;
+    }
+
     auto f = find(algorithm);
     if (!f) return LocalContrastError::InternalError;
     return f(input, output, width, height, channels, bit_depth, params);

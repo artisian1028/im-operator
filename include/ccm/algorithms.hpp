@@ -58,6 +58,12 @@ CCMatrix3x3 identity_3x3();
 // Compute a saturation-boosting matrix (sat: 0 = grayscale, 1 = original, >1 = boosted)
 CCMatrix3x3 saturation_matrix(float sat);
 
+// CUDA support
+bool has_cuda();
+CCMError process_ccm_cuda(const uint8_t* input, uint8_t* output,
+                           int width, int height, int channels,
+                           int bit_depth, const float* matrix);
+
 } // namespace ccm
 
 #endif // CCM_ALGORITHMS_HPP

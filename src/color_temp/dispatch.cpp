@@ -73,6 +73,22 @@ ColorTempError process_color_temp(const uint8_t* input, uint8_t* output,
                                                       channels, bit_depth);
     if (err != ColorTempError::Ok) return err;
 
+    if (has_cuda()) {
+        float rm = 1.0f, gm = 1.0f, bm = 1.0f;
+        if (algorithm == ColorTempAlgorithm::MANUAL) {
+            rm = r_gain; bm = b_gain;
+        } else if (algorithm == ColorTempAlgorithm::KELVIN) {
+            kelvin_to_rgb_multipliers(kelvin, rm, bm);
+        } else if (algorithm == ColorTempAlgorithm::PRESET) {
+            illuminant_to_rgb_multipliers(preset, rm, bm);
+        }
+        if (algorithm != ColorTempAlgorithm::WHITE_BALANCE) {
+            ColorTempError cuda_err = process_color_temp_cuda(input, output, width, height,
+                                                               channels, bit_depth, rm, gm, bm);
+            if (cuda_err == ColorTempError::Ok) return cuda_err;
+        }
+    }
+
     CTFunc func = find_ct_func(algorithm);
     if (!func) {
         return ColorTempError::InternalError;

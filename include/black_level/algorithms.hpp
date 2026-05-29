@@ -8,6 +8,8 @@
 
 namespace black_level {
 
+using imop::BayerPattern;
+
 std::string algorithm_name(BlackLevelAlgorithm algo);
 int algorithm_window_size(BlackLevelAlgorithm algo);
 
@@ -30,8 +32,18 @@ BlackLevelError process_per_channel(uint8_t* data,
 
 BlackLevelError process_global(uint8_t* data,
                                 int width, int height,
+                                BayerPattern pattern,
                                 int bit_depth,
                                 const BlackLevelParams& params);
+
+// CUDA support
+bool has_cuda();
+BlackLevelError process_black_level_cuda(uint8_t* data,
+                                          int width, int height,
+                                          BayerPattern pattern,
+                                          BlackLevelAlgorithm algorithm,
+                                          int bit_depth,
+                                          const BlackLevelParams& params);
 
 } // namespace black_level
 

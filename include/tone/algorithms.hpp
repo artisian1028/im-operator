@@ -43,6 +43,13 @@ ToneError process_shadows_highlights(const uint8_t* input, uint8_t* output,
                                       int width, int height, int channels,
                                       int bit_depth, const ToneParams& params);
 
+// CUDA support
+bool has_cuda();
+ToneError process_tone_cuda(const uint8_t* input, uint8_t* output,
+                             int width, int height, int channels,
+                             ToneAlgorithm algorithm, int bit_depth,
+                             const ToneParams& params);
+
 } // namespace tone
 
 #endif // TONE_ALGORITHMS_HPP

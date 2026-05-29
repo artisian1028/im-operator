@@ -71,6 +71,12 @@ int illuminant_kelvin(IlluminantPreset preset);
 // Get the display name for a named illuminant
 const char* illuminant_name(IlluminantPreset preset);
 
+// CUDA support
+bool has_cuda();
+ColorTempError process_color_temp_cuda(const uint8_t* input, uint8_t* output,
+                                        int width, int height, int channels,
+                                        int bit_depth, float r_mult, float g_mult, float b_mult);
+
 } // namespace color_temp
 
 #endif // COLOR_TEMP_ALGORITHMS_HPP

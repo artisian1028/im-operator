@@ -1,6 +1,7 @@
 #include "ccm/algorithms.hpp"
 #include <string>
 #include <array>
+#include <cstddef>
 #include <algorithm>
 
 namespace ccm {
@@ -74,6 +75,16 @@ CCMError process_ccm(const uint8_t* input, uint8_t* output,
     CCMError err = validate_ccm_inputs(input, output, width, height,
                                         channels, bit_depth);
     if (err != CCMError::Ok) return err;
+
+    // GPU path only supports 3x3; other types (4x3 with bias, 3x9 polynomial)
+    // must fall through to CPU to avoid silent wrong results.
+    if (has_cuda() && matrix && algorithm == CCMAlgorithm::LINEAR_3X3) {
+        const float* raw_m = reinterpret_cast<const float*>(
+            static_cast<const char*>(matrix) + offsetof(CCMatrix3x3, m));
+        CCMError cuda_err = process_ccm_cuda(input, output, width, height, channels,
+                                              bit_depth, raw_m);
+        if (cuda_err == CCMError::Ok) return cuda_err;
+    }
 
     CCMFunc func = find_ccm_func(algorithm);
     if (!func) {

@@ -49,6 +49,14 @@ DefectCorrectError process_defect_correct(uint8_t* data,
                                            const DefectCorrectParams& params) {
     auto err = validate_defect_correct_inputs(data, width, height, 1, bit_depth);
     if (err != DefectCorrectError::Ok) return err;
+
+    if (has_cuda()) {
+        DefectCorrectError cuda_err = process_defect_correct_cuda(data, width, height,
+                                                                    pattern, algorithm,
+                                                                    bit_depth, params);
+        if (cuda_err == DefectCorrectError::Ok) return cuda_err;
+    }
+
     auto f = find(algorithm);
     if (!f) return DefectCorrectError::InternalError;
     return f(data, width, height, pattern, bit_depth, params);

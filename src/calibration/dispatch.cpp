@@ -10,12 +10,14 @@ namespace calibration {
 
 std::string algorithm_name(CalibrationAlgorithm algo) {
     switch (algo) {
-        case CalibrationAlgorithm::THREE_POINT:
-            return "THREE_POINT (3-point rod calibration)";
-        case CalibrationAlgorithm::RIGHT_TRIANGLE:
-            return "RIGHT_TRIANGLE (world coordinate registration)";
-        default:
-            return "Unknown";
+        case CalibrationAlgorithm::THREE_POINT:           return "THREE_POINT (3-point rod)";
+        case CalibrationAlgorithm::RIGHT_TRIANGLE:        return "RIGHT_TRIANGLE (world registration)";
+        case CalibrationAlgorithm::CHECKERBOARD_DETECT:   return "CHECKERBOARD_DETECT (chessboard corners)";
+        case CalibrationAlgorithm::CHECKERBOARD_CALIBRATE: return "CHECKERBOARD_CALIBRATE (Zhang)";
+        case CalibrationAlgorithm::DLT:                   return "DLT (Direct Linear Transform)";
+        case CalibrationAlgorithm::STEREO_CALIBRATE:      return "STEREO_CALIBRATE (dual-camera)";
+        case CalibrationAlgorithm::BUNDLE_ADJUST:         return "BUNDLE_ADJUST (sparse LM)";
+        default: return "Unknown";
     }
 }
 
@@ -38,10 +40,10 @@ CalibrationError validate_calibration_inputs(const CameraObservations* cameras,
         if (cameras[c].frame_count < 3) return CalibrationError::InvalidFrameCount;
     }
 
-    if (config->image_width <= 0 || config->image_height <= 0) return CalibrationError::InvalidFrameCount;
-    if (config->ab_distance <= 0.0 || config->bc_distance <= 0.0) return CalibrationError::InvalidFrameCount;
-    if (config->max_iterations <= 0) return CalibrationError::InvalidFrameCount;
-    if (config->tolerance <= 0.0) return CalibrationError::InvalidFrameCount;
+    if (config->image_width <= 0 || config->image_height <= 0) return CalibrationError::InvalidConfiguration;
+    if (config->ab_distance <= 0.0 || config->bc_distance <= 0.0) return CalibrationError::InvalidConfiguration;
+    if (config->max_iterations <= 0) return CalibrationError::InvalidConfiguration;
+    if (config->tolerance <= 0.0) return CalibrationError::InvalidConfiguration;
 
     return CalibrationError::Ok;
 }

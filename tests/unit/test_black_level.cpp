@@ -28,7 +28,7 @@ TEST(BlackLevelTest, GlobalSubtractsConstant) {
     std::vector<uint8_t> data(w * h, 200);
     BlackLevelParams p;
     p.r_offset = 64.0f;
-    auto err = process_global(data.data(), w, h, 8, p);
+    auto err = process_global(data.data(), w, h, BayerPattern::RGGB, 8, p);
     EXPECT_EQ(err, BlackLevelError::Ok);
     for (size_t i = 0; i < data.size(); i++) EXPECT_LE(data[i], 136);
 }
@@ -38,7 +38,7 @@ TEST(BlackLevelTest, GlobalClampsToZero) {
     std::vector<uint8_t> data(w * h, 40);
     BlackLevelParams p;
     p.r_offset = 100.0f;
-    auto err = process_global(data.data(), w, h, 8, p);
+    auto err = process_global(data.data(), w, h, BayerPattern::RGGB, 8, p);
     EXPECT_EQ(err, BlackLevelError::Ok);
     for (size_t i = 0; i < data.size(); i++) EXPECT_EQ(data[i], 0);
 }

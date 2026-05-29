@@ -191,8 +191,8 @@ CalibrationError process_right_triangle(const CameraObservations* cameras,
                                          WorldRegistration* world_reg) {
     if (!cameras || !calibrations || !config || !world_reg) return CalibrationError::NullInput;
     if (camera_count < 2) return CalibrationError::InvalidCameraCount;
-    if (config->image_width <= 0 || config->image_height <= 0) return CalibrationError::InvalidFrameCount;
-    if (config->ox_length <= 0.0 || config->oy_length <= 0.0) return CalibrationError::InvalidFrameCount;
+    if (config->image_width <= 0 || config->image_height <= 0) return CalibrationError::InvalidConfiguration;
+    if (config->ox_length <= 0.0 || config->oy_length <= 0.0) return CalibrationError::InvalidConfiguration;
 
     // Verify each camera has 1 frame of observations
     for (int c = 0; c < camera_count; ++c) {

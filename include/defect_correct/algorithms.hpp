@@ -8,6 +8,8 @@
 
 namespace defect_correct {
 
+using imop::BayerPattern;
+
 std::string algorithm_name(DefectCorrectAlgorithm algo);
 int algorithm_window_size(DefectCorrectAlgorithm algo);
 
@@ -33,6 +35,15 @@ DefectCorrectError process_map_based(uint8_t* data,
                                       BayerPattern pattern,
                                       int bit_depth,
                                       const DefectCorrectParams& params);
+
+// CUDA support
+bool has_cuda();
+DefectCorrectError process_defect_correct_cuda(uint8_t* data,
+                                                int width, int height,
+                                                BayerPattern pattern,
+                                                DefectCorrectAlgorithm algorithm,
+                                                int bit_depth,
+                                                const DefectCorrectParams& params);
 
 } // namespace defect_correct
 

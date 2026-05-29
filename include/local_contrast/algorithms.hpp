@@ -28,6 +28,12 @@ LocalContrastError process_bilateral(const uint8_t* input, uint8_t* output,
                                       int width, int height, int channels,
                                       int bit_depth, const LocalContrastParams& params);
 
+// CUDA support
+bool has_cuda();
+LocalContrastError process_local_contrast_cuda(const uint8_t* input, uint8_t* output,
+                                                int width, int height, int channels,
+                                                int bit_depth, const LocalContrastParams& params);
+
 } // namespace local_contrast
 
 #endif

@@ -1,6 +1,7 @@
 #ifndef HDR_COMMON_HPP
 #define HDR_COMMON_HPP
 
+#include "hdr/algorithms.hpp"
 #include <cstdint>
 #include <algorithm>
 #include <cmath>

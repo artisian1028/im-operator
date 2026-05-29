@@ -49,6 +49,13 @@ HighlightReconstructError process_highlight_reconstruct(const uint8_t* input, ui
                                                          const HighlightReconstructParams& params) {
     auto err = validate_highlight_reconstruct_inputs(input, output, width, height, channels, bit_depth);
     if (err != HighlightReconstructError::Ok) return err;
+
+    if (has_cuda()) {
+        HighlightReconstructError cuda_err = process_highlight_reconstruct_cuda(
+            input, output, width, height, channels, algorithm, bit_depth, params);
+        if (cuda_err == HighlightReconstructError::Ok) return cuda_err;
+    }
+
     auto f = find(algorithm);
     if (!f) return HighlightReconstructError::InternalError;
     return f(input, output, width, height, channels, bit_depth, params);

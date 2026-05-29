@@ -40,6 +40,13 @@ SharpenError process_adaptive(const uint8_t* input, uint8_t* output,
                                int width, int height, int channels,
                                int bit_depth, const SharpenParams& params);
 
+// CUDA support
+bool has_cuda();
+SharpenError process_sharpen_cuda(const uint8_t* input, uint8_t* output,
+                                   int width, int height, int channels,
+                                   SharpenAlgorithm algorithm, int bit_depth,
+                                   const SharpenParams& params);
+
 } // namespace sharpen
 
 #endif // SHARPEN_ALGORITHMS_HPP

@@ -79,6 +79,14 @@ LUTError process_lut(const uint8_t* input, uint8_t* output,
                                         channels, bit_depth);
     if (err != LUTError::Ok) return err;
 
+    // GPU path only supports CUSTOM_3D (lut_data is a LUT3D*).
+    // CUBE_FILE passes a const char* filepath — casting to LUT3D* is UB.
+    if (has_cuda() && algorithm == LUTAlgorithm::CUSTOM_3D) {
+        LUTError cuda_err = process_lut_cuda(input, output, width, height, channels,
+                                              bit_depth, *static_cast<const LUT3D*>(lut_data));
+        if (cuda_err == LUTError::Ok) return cuda_err;
+    }
+
     LUTFunc func = find_lut_func(algorithm);
     if (!func) {
         return LUTError::InternalError;

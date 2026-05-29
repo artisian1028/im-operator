@@ -69,6 +69,22 @@ SaturationError process_saturation(const uint8_t* input, uint8_t* output,
                                                        channels, bit_depth);
     if (err != SaturationError::Ok) return err;
 
+    if (has_cuda()) {
+        float sat = 1.0f, vib = 1.0f;
+        if (algorithm == SaturationAlgorithm::HSL) {
+            sat = params.saturation;
+        } else if (algorithm == SaturationAlgorithm::VIBRANCE) {
+            vib = params.vibrance;
+        } else {
+            sat = 0.0f; // signal: unsupported, let GPU return error
+        }
+        if (sat != 0.0f || vib != 1.0f) {
+            SaturationError cuda_err = process_saturation_cuda(input, output, width, height,
+                                                                channels, bit_depth, sat, vib);
+            if (cuda_err == SaturationError::Ok) return cuda_err;
+        }
+    }
+
     SatFunc func = find_sat_func(algorithm);
     if (!func) {
         return SaturationError::InternalError;

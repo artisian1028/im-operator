@@ -80,6 +80,12 @@ DenoiseError process_denoise(const uint8_t* input, uint8_t* output,
                                                 channels, bit_depth);
     if (err != DenoiseError::Ok) return err;
 
+    if (has_cuda()) {
+        DenoiseError cuda_err = process_denoise_cuda(input, output, width, height, channels,
+                                                       algorithm, bit_depth, strength);
+        if (cuda_err == DenoiseError::Ok) return cuda_err;
+    }
+
     DenoiseFunc func = find_denoise_func(algorithm);
     if (!func) {
         return DenoiseError::InternalError;

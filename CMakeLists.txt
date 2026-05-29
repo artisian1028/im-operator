@@ -110,8 +110,18 @@ add_library(im_operator STATIC
     src/jpeg_codec/decode_baseline.cpp
     src/jpeg_codec/cuda_dispatch.cpp
     src/calibration/dispatch.cpp
+    src/calibration/cuda_dispatch.cpp
     src/calibration/three_point.cpp
     src/calibration/right_triangle.cpp
+    src/calibration/checkerboard_detect.cpp
+    src/calibration/checkerboard_calibrate.cpp
+    src/calibration/dlt.cpp
+    src/calibration/stereo_calibrate.cpp
+    src/calibration/bundle_adjust.cpp
+    src/calibration/camera_graph.cpp
+    src/calibration/pnp_solver.cpp
+    src/calibration/incremental_sfm.cpp
+    src/calibration/sparse_ba.cpp
     src/hdr/dispatch.cpp
     src/hdr/reinhard.cpp
     src/hdr/reinhard_ext.cpp
@@ -140,6 +150,10 @@ add_library(im_operator STATIC
     src/color_calibration/extract_patches.cpp
     src/color_calibration/solve_ccm.cpp
     src/color_calibration/generate_linearization.cpp
+    src/lens_shading/dispatch.cpp
+    src/lens_shading/polynomial.cpp
+    src/lens_shading/flat_field.cpp
+    src/gpu_dispatch.cpp
 )
 
 if(IM_OPERATOR_ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
@@ -147,6 +161,8 @@ if(IM_OPERATOR_ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
         src/algorithms/cuda_kernels.cu
         src/jpeg_codec/jpeg_codec_kernels.cu
         src/hdr/hdr_kernels.cu
+        src/gpu_ops_kernels.cu
+        src/calibration/calib_kernels.cu
     )
     target_compile_definitions(im_operator PRIVATE IM_OPERATOR_HAS_CUDA)
 
@@ -170,6 +186,8 @@ if(IM_OPERATOR_ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
         src/algorithms/cuda_kernels.cu
         src/jpeg_codec/jpeg_codec_kernels.cu
         src/hdr/hdr_kernels.cu
+        src/gpu_ops_kernels.cu
+        src/calibration/calib_kernels.cu
         PROPERTIES COMPILE_OPTIONS "--expt-relaxed-constexpr"
     )
 endif()
@@ -196,6 +214,7 @@ target_include_directories(im_operator
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/highlight_reconstruct>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/local_contrast>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/color_calibration>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/lens_shading>
 )
 
 target_compile_features(im_operator PUBLIC cxx_std_17)
@@ -284,8 +303,10 @@ if(IM_OPERATOR_BUILD_UNIT_TESTS)
         tests/unit/test_highlight_reconstruct.cpp
         tests/unit/test_local_contrast.cpp
         tests/unit/test_color_calibration.cpp
+        tests/unit/test_lens_shading.cpp
     )
     target_link_libraries(im_operator_unit_tests PRIVATE im_operator gtest_main)
+    target_include_directories(im_operator_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/calibration)
 
     # Enable CTest integration
     include(CTest)
@@ -354,6 +375,9 @@ install(FILES include/local_contrast/algorithms.hpp  DESTINATION include/local_c
 install(FILES include/color_calibration.h DESTINATION include)
 install(FILES include/color_calibration/types.hpp      DESTINATION include/color_calibration)
 install(FILES include/color_calibration/algorithms.hpp  DESTINATION include/color_calibration)
+install(FILES include/lens_shading.h DESTINATION include)
+install(FILES include/lens_shading/types.hpp      DESTINATION include/lens_shading)
+install(FILES include/lens_shading/algorithms.hpp  DESTINATION include/lens_shading)
 install(FILES include/hdr.h DESTINATION include)
 install(FILES include/hdr/types.hpp      DESTINATION include/hdr)
 install(FILES include/hdr/algorithms.hpp  DESTINATION include/hdr)

@@ -74,6 +74,12 @@ SharpenError process_sharpen(const uint8_t* input, uint8_t* output,
                                                 channels, bit_depth);
     if (err != SharpenError::Ok) return err;
 
+    if (has_cuda()) {
+        SharpenError cuda_err = process_sharpen_cuda(input, output, width, height, channels,
+                                                       algorithm, bit_depth, params);
+        if (cuda_err == SharpenError::Ok) return cuda_err;
+    }
+
     SharpenFunc func = find_sharpen_func(algorithm);
     if (!func) {
         return SharpenError::InternalError;

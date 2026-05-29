@@ -40,6 +40,12 @@ SaturationError process_selective(const uint8_t* input, uint8_t* output,
                                    int width, int height, int channels,
                                    int bit_depth, const SaturationParams& params);
 
+// CUDA support
+bool has_cuda();
+SaturationError process_saturation_cuda(const uint8_t* input, uint8_t* output,
+                                         int width, int height, int channels,
+                                         int bit_depth, float sat, float vib);
+
 } // namespace saturation
 
 #endif // SATURATION_ALGORITHMS_HPP

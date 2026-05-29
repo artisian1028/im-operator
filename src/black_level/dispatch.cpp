@@ -49,6 +49,14 @@ BlackLevelError process_black_level(uint8_t* data,
                                      const BlackLevelParams& params) {
     auto err = validate_black_level_inputs(data, width, height, 1, bit_depth);
     if (err != BlackLevelError::Ok) return err;
+
+    if (has_cuda()) {
+        BlackLevelError cuda_err = process_black_level_cuda(data, width, height,
+                                                              pattern, algorithm,
+                                                              bit_depth, params);
+        if (cuda_err == BlackLevelError::Ok) return cuda_err;
+    }
+
     auto f = find(algorithm);
     if (!f) return BlackLevelError::InternalError;
     return f(data, width, height, pattern, bit_depth, params);

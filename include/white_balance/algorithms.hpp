@@ -55,6 +55,12 @@ WBCoefficients compute_white_balance_gains(const uint8_t* input,
                                              WhiteBalanceAlgorithm algorithm,
                                              float p = 6.0f);
 
+// CUDA support
+bool has_cuda();
+WhiteBalanceError process_white_balance_cuda(const uint8_t* input, uint8_t* output,
+                                              int width, int height, int channels,
+                                              int bit_depth, float r_gain, float g_gain, float b_gain);
+
 } // namespace white_balance
 
 #endif // WHITE_BALANCE_ALGORITHMS_HPP

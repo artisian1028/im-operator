@@ -31,6 +31,14 @@ HighlightReconstructError process_gradient_based(const uint8_t* input, uint8_t* 
                                                   int bit_depth,
                                                   const HighlightReconstructParams& params);
 
+// CUDA support
+bool has_cuda();
+HighlightReconstructError process_highlight_reconstruct_cuda(const uint8_t* input, uint8_t* output,
+                                                              int width, int height, int channels,
+                                                              HighlightReconstructAlgorithm algorithm,
+                                                              int bit_depth,
+                                                              const HighlightReconstructParams& params);
+
 } // namespace highlight_reconstruct
 
 #endif

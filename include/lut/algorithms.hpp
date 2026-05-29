@@ -85,6 +85,12 @@ LUT3D build_identity_lut(int size = 33);
 LUTError apply_lut(const LUT3D& lut, const uint8_t* input, uint8_t* output,
                    int width, int height, int bit_depth);
 
+// CUDA support
+bool has_cuda();
+LUTError process_lut_cuda(const uint8_t* input, uint8_t* output,
+                           int width, int height, int channels,
+                           int bit_depth, const LUT3D& lut_data);
+
 } // namespace lut
 
 #endif // LUT_ALGORITHMS_HPP

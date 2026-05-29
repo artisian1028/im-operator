@@ -6,8 +6,13 @@
 namespace calibration {
 
 enum class CalibrationAlgorithm {
-    THREE_POINT,    // Three-point rod calibration (intrinsics + extrinsics)
-    RIGHT_TRIANGLE  // Right-triangle world coordinate registration
+    THREE_POINT,             // Three-point rod calibration (intrinsics + extrinsics)
+    RIGHT_TRIANGLE,          // Right-triangle world coordinate registration
+    CHECKERBOARD_DETECT,     // Detect chessboard corners at sub-pixel accuracy
+    CHECKERBOARD_CALIBRATE,  // Zhang's camera calibration from multiple chessboard views
+    DLT,                     // Direct Linear Transform: N 3D→2D point correspondences
+    STEREO_CALIBRATE,        // Dual-camera stereo extrinsic calibration
+    BUNDLE_ADJUST            // Multi-camera joint refinement via sparse LM
 };
 
 enum class CalibrationError {
@@ -15,6 +20,7 @@ enum class CalibrationError {
     NullInput,
     InvalidCameraCount,
     InvalidFrameCount,
+    InvalidConfiguration,
     InsufficientObservations,
     SingularMatrix,
     OptimizationFailed,
@@ -31,6 +37,8 @@ inline const char* calibration_error_message(CalibrationError err) {
             return "Invalid camera count (must be >= 1)";
         case CalibrationError::InvalidFrameCount:
             return "Invalid frame count (must be >= 3)";
+        case CalibrationError::InvalidConfiguration:
+            return "Invalid calibration configuration parameter";
         case CalibrationError::InsufficientObservations:
             return "Insufficient observations for calibration";
         case CalibrationError::SingularMatrix:
@@ -133,6 +141,155 @@ struct TriangleConfig {
 struct WorldRegistration {
     CameraExtrinsics world_to_camera;  // Transform from world frame to camera 0's frame
     double fit_error = 0.0;           // RMS residual of rigid fit (mm)
+};
+
+// ============================================================
+//  Checkerboard calibration types
+// ============================================================
+
+// Detected chessboard corners from a single image
+struct CheckerboardCorners {
+    Point2D* points;       // corners in row-major order (rows*cols points)
+    int rows;              // inner corner rows
+    int cols;              // inner corner columns
+    bool valid;            // detection succeeded
+};
+
+// Configuration for checkerboard detection
+struct CheckerboardConfig {
+    int cols = 9;          // inner corners in X direction
+    int rows = 6;          // inner corners in Y direction
+    double square_size = 1.0; // square side length in mm
+    bool sub_pixel = true; // enable sub-pixel refinement
+    int sub_pixel_window = 11;  // half-window for sub-pixel refinement
+    int sub_pixel_iters = 30;   // max sub-pixel iterations
+    double sub_pixel_eps = 0.001; // sub-pixel convergence tolerance
+};
+
+// Multiple checkerboard views for Zhang calibration
+struct CheckerboardViews {
+    const CheckerboardCorners* corners;  // array of views
+    int view_count;
+};
+
+// DLT: N 3D world points → their 2D image projections
+struct DltCorrespondence {
+    double world_x, world_y, world_z;  // 3D world coordinates
+    double image_x, image_y;           // 2D image coordinates
+};
+
+struct DltParams {
+    const DltCorrespondence* correspondences;
+    int count;  // must be >= 6
+};
+
+// DLT output: 3x4 camera matrix P = K*[R|t]
+struct DltResult {
+    double P[12];  // 3x4 camera matrix, row-major
+    CameraIntrinsics K;
+    CameraExtrinsics extrinsics;
+    double residual = 0.0;
+};
+
+// Stereo calibration config
+struct StereoCalibrateParams {
+    const CheckerboardCorners* left_corners;
+    const CheckerboardCorners* right_corners;
+    int view_count;
+    const CameraIntrinsics* left_intrinsics;   // from individual calibration
+    const CameraIntrinsics* right_intrinsics;  // from individual calibration
+    bool fix_intrinsics = true;
+};
+
+// Bundle adjustment config
+struct BundleAdjustParams {
+    const CameraObservations* cameras;
+    int camera_count;
+    int frame_count;
+    CameraIntrinsics* intrinsics;  // in/out
+    CameraExtrinsics* extrinsics;  // in/out per camera
+    double ab_distance = 150.0;    // rod AB distance in mm
+    double bc_distance = 250.0;    // rod BC distance in mm
+    int max_iterations = 50;
+    double tolerance = 1e-6;
+    bool fix_intrinsics = true;
+};
+
+// ============================================================
+//  Large-scale calibration types
+// ============================================================
+
+// Camera graph: which cameras see common 3D points
+struct CameraPair {
+    int cam_i;           // camera index
+    int cam_j;           // camera index
+    int common_pts;      // number of shared 3D observations
+    double score;        // matching quality score
+};
+
+struct CameraGraph {
+    CameraPair* pairs;       // sorted by common_pts descending
+    int pair_count;
+    int camera_count;
+    int** visibility;        // [cam][point_idx] = observed? (for sparse access)
+    int* vis_counts;         // per-camera observed point count
+    int total_points;
+};
+
+// PnP solver: N 3D→2D correspondences → camera pose
+struct PnPParams {
+    const Point2D* image_pts;      // N 2D image observations
+    const double* world_pts;       // N 3D world coordinates (3*N doubles)
+    int point_count;               // must be >= 4
+    const CameraIntrinsics* intrinsics;
+};
+
+struct PnPResult {
+    CameraExtrinsics pose;         // R, t
+    int inliers;                   // number of inliers (for RANSAC mode)
+    double rms_error;
+};
+
+// Incremental SfM
+struct SfMView {
+    const CheckerboardCorners* corners;
+    int camera_id;
+};
+
+struct SfMConfig {
+    const SfMView* views;
+    int view_count;
+    const CameraIntrinsics* intrinsics;  // per-view (or shared)
+    int intrinsics_count;                // 1 for shared, view_count for per-camera
+    double square_size;
+    int cols, rows;                     // checkerboard dimensions
+    int max_iterations = 50;
+    double tolerance = 1e-6;
+};
+
+struct SfMResult {
+    CameraExtrinsics* extrinsics;       // per-view pose (view_count)
+    double* points_3d;                  // reconstructed 3D points
+    int point_count;
+    double rms_error;
+    bool valid;
+};
+
+// Sparse BA: Schur-complement-based joint optimization
+// Uses analytical Jacobian for efficiency on 50-100+ cameras
+struct SparseBAParams {
+    CameraIntrinsics* intrinsics;    // C cameras × intrinsics array
+    CameraExtrinsics* extrinsics;    // C cameras × extrinsics array
+    int camera_count;
+    double* points_3d;               // P points × 3 coordinates
+    int point_count;
+    const Point2D* observations;     // all 2D observations, flat array
+    const int* obs_camera;           // camera index per observation
+    const int* obs_point;            // point index per observation
+    int obs_count;
+    int max_iterations = 30;
+    double tolerance = 1e-6;
+    bool fix_intrinsics = true;
 };
 
 }  // namespace calibration

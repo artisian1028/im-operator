@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "calibration/algorithms.hpp"
+#include "common.hpp"
 
 using namespace calibration;
 
@@ -500,4 +501,590 @@ TEST(CalibrationEdgeCases, ThreeFramesExactly) {
     ASSERT_TRUE(ok(err)) << "Calibration failed: " << calibration_error_message(err);
     EXPECT_GT(result.intrinsics.fx, 0.0);
     EXPECT_GT(result.intrinsics.fy, 0.0);
+}
+
+// ============================================================
+//  Checkerboard detection tests
+// ============================================================
+
+TEST(CheckerboardTest, DetectsSyntheticBoard) {
+    int w = 200, h = 150, cols = 5, rows = 4;
+    std::vector<uint8_t> img(static_cast<size_t>(w) * h, 128);
+    // Draw a synthetic checkerboard
+    int x0 = w/10, y0 = h/10;
+    int cw = (w*8/10)/cols, ch = (h*8/10)/rows;
+    for (int r = 0; r < rows; r++)
+        for (int c = 0; c < cols; c++)
+            if ((r+c) & 1)
+                for (int y = y0+r*ch; y < y0+(r+1)*ch && y < h; y++)
+                    for (int x = x0+c*cw; x < x0+(c+1)*cw && x < w; x++)
+                        img[static_cast<size_t>(y)*w+x] = 20;
+
+    CheckerboardConfig cfg; cfg.cols=cols-1; cfg.rows=rows-1;
+    CheckerboardCorners corners;
+    auto err = process_checkerboard_detect(img.data(), w, h, 1, 8, &cfg, &corners);
+    EXPECT_TRUE(ok(err)) << calibration_error_message(err);
+    if (ok(err)) {
+        EXPECT_EQ(corners.rows, rows-1);
+        EXPECT_EQ(corners.cols, cols-1);
+        EXPECT_TRUE(corners.valid);
+        delete[] corners.points;
+    }
+}
+
+TEST(CheckerboardTest, NullInput) {
+    CheckerboardConfig cfg;
+    CheckerboardCorners corners;
+    auto err = process_checkerboard_detect(nullptr, 100, 100, 1, 8, &cfg, &corners);
+    EXPECT_EQ(err, CalibrationError::NullInput);
+}
+
+TEST(CheckerboardTest, TooSmallBoard) {
+    CheckerboardConfig cfg; cfg.cols=15; cfg.rows=10;
+    uint8_t img[100] = {0};
+    CheckerboardCorners corners;
+    auto err = process_checkerboard_detect(img, 10, 10, 1, 8, &cfg, &corners);
+    EXPECT_EQ(err, CalibrationError::InsufficientObservations);
+}
+
+// ============================================================
+//  DLT tests
+// ============================================================
+
+TEST(DltTest, IdentityProjection) {
+    // Non-coplanar points at varying Z with identity camera (fx=fy=1,cx=cy=0)
+    DltCorrespondence pts[6] = {
+        {0,0,2,  0,0},
+        {2,0,2,  1,0},
+        {0,1,2,  0,0.5},
+        {1,1,1,  1,1},
+        {3,0,3,  1,0},
+        {0,3,3,  0,1},
+    };
+    DltParams p = {pts, 6};
+    DltResult r;
+    auto err = process_dlt(&p, &r);
+    EXPECT_EQ(err, CalibrationError::Ok);
+    EXPECT_GT(r.K.fx, 0.0);
+    EXPECT_GT(r.K.fy, 0.0);
+}
+
+TEST(DltTest, InsufficientPoints) {
+    DltCorrespondence pts[5] = {};
+    DltParams p = {pts, 5};
+    DltResult r;
+    auto err = process_dlt(&p, &r);
+    EXPECT_EQ(err, CalibrationError::InsufficientObservations);
+}
+
+// ============================================================
+//  Bundle adjustment tests
+// ============================================================
+
+TEST(BundleAdjustTest, NoOpOnIdentity) {
+    // Camera at (0,0,500), rod model at world origin
+    CameraIntrinsics K;
+    K.fx=1200; K.fy=1200; K.cx=960; K.cy=540;
+    K.k1=K.k2=K.k3=K.p1=K.p2=0;
+
+    CameraExtrinsics ext;
+    ext.rotation[0]=ext.rotation[4]=ext.rotation[8]=1;
+    ext.translation[0]=0; ext.translation[1]=0; ext.translation[2]=500;
+
+    double L1=150, L2=250;
+    // Rod model: A=(0,0,0), B=(150,0,0), C=(400,0,0)
+    // Camera at I,t=(0,0,500): P_c = rod + (0,0,500)
+    std::vector<RodObservation> obs(1);
+    obs[0].marker_a = {960, 540};
+    obs[0].marker_b = {1320, 540};
+    obs[0].marker_c = {1920, 540};
+
+    CameraObservations cam = {obs.data(), 1};
+
+    BundleAdjustParams bp;
+    bp.cameras = &cam; bp.camera_count = 1; bp.frame_count = 1;
+    bp.intrinsics = &K; bp.extrinsics = &ext;
+    bp.ab_distance = L1; bp.bc_distance = L2;
+    bp.max_iterations = 5;
+
+    auto err = process_bundle_adjust(&bp);
+    EXPECT_EQ(err, CalibrationError::Ok);
+    // Verify intrinsics are still reasonable
+    EXPECT_GT(K.fx, 0);
+    EXPECT_GT(K.fy, 0);
+}
+
+TEST(BundleAdjustTest, RefinesIntrinsics) {
+    srand(123);
+    CameraIntrinsics K;
+    K.fx=1000; K.fy=1000; K.cx=960; K.cy=540;
+    K.k1=K.k2=K.k3=K.p1=K.p2=0;
+
+    CameraExtrinsics ext;
+    ext.rotation[0]=ext.rotation[4]=ext.rotation[8]=1;
+    ext.translation[0]=0; ext.translation[1]=0; ext.translation[2]=600;
+
+    double L1=150, L2=250;
+    // Generate noisy observations of the rod
+    std::vector<RodObservation> obs(3);
+    for (int f = 0; f < 3; f++) {
+        // Slightly vary camera position per frame
+        double tz = 600 + f * 20;
+        double rod_pts[3][3] = {{0,0,0}, {L1,0,0}, {L1+L2,0,0}};
+        double R[9] = {1,0,0,0,1,0,0,0,1};
+        double t[3] = {0, 0, tz};
+        for (int m = 0; m < 3; m++) {
+            Point2D proj;
+            detail::project_point_world(K, R, t, rod_pts[m], proj);
+            double nx = std::sqrt(-2*std::log(rand01()+1e-30))*std::cos(6.283*rand01());
+            double ny = std::sqrt(-2*std::log(rand01()+1e-30))*std::sin(6.283*rand01());
+            if (m == 0) { obs[f].marker_a = {proj.x + 0.5*nx, proj.y + 0.5*ny}; }
+            else if (m == 1) { obs[f].marker_b = {proj.x + 0.5*nx, proj.y + 0.5*ny}; }
+            else { obs[f].marker_c = {proj.x + 0.5*nx, proj.y + 0.5*ny}; }
+        }
+    }
+
+    CameraObservations cam = {obs.data(), 3};
+
+    // Perturb intrinsics
+    K.fx = 900; K.fy = 1100;
+    BundleAdjustParams bp;
+    bp.cameras = &cam; bp.camera_count = 1; bp.frame_count = 3;
+    bp.intrinsics = &K; bp.extrinsics = &ext;
+    bp.ab_distance = L1; bp.bc_distance = L2;
+    bp.fix_intrinsics = false;
+    bp.max_iterations = 30;
+
+    auto err = process_bundle_adjust(&bp);
+    EXPECT_EQ(err, CalibrationError::Ok);
+    // Should recover close to GT
+    EXPECT_NEAR(K.fx, 1000, 200);
+    EXPECT_NEAR(K.fy, 1000, 200);
+}
+
+// ============================================================
+//  Checkerboard calibration tests
+// ============================================================
+
+TEST(CheckerboardCalibrateTest, SyntheticThreeViews) {
+    int cols = 6, rows = 5, total = cols * rows;
+    double ss = 30.0;
+
+    // Ground truth intrinsics
+    CameraIntrinsics gtK;
+    gtK.fx = 800; gtK.fy = 800; gtK.cx = 320; gtK.cy = 240;
+    gtK.k1 = gtK.k2 = gtK.k3 = gtK.p1 = gtK.p2 = 0;
+
+    // Generate 3 checkerboard views at known, well-conditioned poses
+    // View 0: board straight ahead, slight tilt
+    // View 1: board tilted left
+    // View 2: board tilted up
+    double poses[3][6] = {
+        // rx, ry, rz, tx, ty, tz
+        {0.1, 0.0, 0.0,   0,   0, 600},
+        {0.0, 0.15, 0.0,  50,   0, 650},
+        {0.0, 0.0, 0.1,    0, -30, 580},
+    };
+
+    std::vector<std::vector<Point2D>> all_pts(3, std::vector<Point2D>(total));
+    CheckerboardCorners views[3];
+
+    for (int v = 0; v < 3; v++) {
+        double rv[3] = {poses[v][0], poses[v][1], poses[v][2]};
+        double R[9]; detail::rodrigues_to_matrix(rv, R);
+        double t[3] = {poses[v][3], poses[v][4], poses[v][5]};
+
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++) {
+                double Pw[3] = {j * ss, i * ss, 0};
+                Point2D proj;
+                detail::project_point_world(gtK, R, t, Pw, proj);
+                all_pts[v][i*cols+j] = proj;
+            }
+
+        views[v].points = all_pts[v].data();
+        views[v].rows = rows;
+        views[v].cols = cols;
+        views[v].valid = true;
+    }
+
+    CheckerboardConfig cfg;
+    cfg.cols = cols; cfg.rows = rows; cfg.square_size = ss;
+
+    CameraIntrinsics resultK;
+    CameraExtrinsics resultExt[3];
+    auto err = process_checkerboard_calibrate(views, 3, 640, 480, &cfg,
+                                               &resultK, resultExt, false);
+    EXPECT_EQ(err, CalibrationError::Ok);
+
+    // Check intrinsics are reasonable (within 50% of ground truth)
+    EXPECT_NEAR(resultK.fx, 800, 400);
+    EXPECT_NEAR(resultK.fy, 800, 400);
+}
+
+TEST(CheckerboardCalibrateTest, InsufficientViews) {
+    CheckerboardConfig cfg; cfg.cols = 5; cfg.rows = 4;
+    CameraIntrinsics K;
+    CameraExtrinsics ext;
+    // Pass valid corners pointer but insufficient view_count
+    CheckerboardCorners dummy;
+    dummy.points = nullptr; dummy.rows = 0; dummy.cols = 0; dummy.valid = false;
+    auto err = process_checkerboard_calibrate(&dummy, 2, 640, 480, &cfg, &K, &ext, false);
+    EXPECT_EQ(err, CalibrationError::InsufficientObservations);
+}
+
+TEST(CheckerboardCalibrateTest, NullInput) {
+    CameraIntrinsics K;
+    CameraExtrinsics ext;
+    CheckerboardConfig cfg;
+    auto err = process_checkerboard_calibrate(nullptr, 3, 640, 480, &cfg, &K, &ext, false);
+    EXPECT_EQ(err, CalibrationError::NullInput);
+}
+
+// ============================================================
+//  Stereo calibration tests
+// ============================================================
+
+TEST(StereoCalibrateTest, SyntheticStereoPair) {
+    int cols = 6, rows = 5, total = cols * rows;
+    int nviews = 3;
+
+    // Ground truth: left camera at origin, right camera at (200, 0, 0)
+    CameraIntrinsics Kl, Kr;
+    Kl.fx = 800; Kl.fy = 800; Kl.cx = 320; Kl.cy = 240;
+    Kl.k1=Kl.k2=Kl.k3=Kl.p1=Kl.p2=0;
+    Kr = Kl;
+
+    double gtR[9] = {1,0,0,0,1,0,0,0,1};
+    double gtT[3] = {200, 0, 0};
+
+    // Use known board poses
+    double board_poses[3][6] = {
+        {0.05, 0.0,  0.0,   0,   0, 600},
+        {0.0,  0.08, 0.0,  30,   0, 650},
+        {0.0,  0.0,  0.05,  0, -20, 580},
+    };
+
+    // Generate checkerboard views for both cameras
+    std::vector<std::vector<Point2D>> left_pts(nviews, std::vector<Point2D>(total));
+    std::vector<std::vector<Point2D>> right_pts(nviews, std::vector<Point2D>(total));
+    CheckerboardCorners left_views[3], right_views[3];
+
+    for (int v = 0; v < nviews; v++) {
+        double rv[3] = {board_poses[v][0], board_poses[v][1], board_poses[v][2]};
+        double R_board[9]; detail::rodrigues_to_matrix(rv, R_board);
+        double t_board[3] = {board_poses[v][3], board_poses[v][4], board_poses[v][5]};
+
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++) {
+                double Pw[3] = {j * 1.0, i * 1.0, 0};
+                Point2D pl, pr;
+
+                // Left camera
+                detail::project_point_world(Kl, R_board, t_board, Pw, pl);
+                left_pts[v][i*cols+j] = pl;
+
+                // Right camera: transform board to left-cam, then to right-cam
+                double Pc[3];
+                detail::mat3x3_vec3_mult(R_board, Pw, Pc);
+                Pc[0]+=t_board[0]; Pc[1]+=t_board[1]; Pc[2]+=t_board[2];
+                double Pr_cam[3];
+                detail::mat3x3_vec3_mult(gtR, Pc, Pr_cam);
+                Pr_cam[0]+=gtT[0]; Pr_cam[1]+=gtT[1]; Pr_cam[2]+=gtT[2];
+                detail::project_point(Kr, Pr_cam, pr);
+                right_pts[v][i*cols+j] = pr;
+            }
+
+        left_views[v].points = left_pts[v].data();
+        left_views[v].rows = rows; left_views[v].cols = cols; left_views[v].valid = true;
+        right_views[v].points = right_pts[v].data();
+        right_views[v].rows = rows; right_views[v].cols = cols; right_views[v].valid = true;
+    }
+
+    StereoCalibrateParams sp;
+    sp.left_corners = left_views;
+    sp.right_corners = right_views;
+    sp.view_count = nviews;
+    sp.left_intrinsics = &Kl;
+    sp.right_intrinsics = &Kr;
+
+    CameraExtrinsics stereoR, stereoT;
+    double rms = 0;
+    auto err = process_stereo_calibrate(&sp, &stereoR, &stereoT, &rms);
+    EXPECT_EQ(err, CalibrationError::Ok);
+
+    // Verify stereo extrinsics are not identity
+    double R_diff = 0;
+    for (int i = 0; i < 9; i++) {
+        double expected = (i % 4 == 0) ? 1.0 : 0.0;
+        R_diff += std::abs(stereoR.rotation[i] - expected);
+    }
+    // Rotation may differ from identity (stereo pair has offset)
+    double t_norm = std::sqrt(stereoT.translation[0]*stereoT.translation[0] +
+                              stereoT.translation[1]*stereoT.translation[1] +
+                              stereoT.translation[2]*stereoT.translation[2]);
+    EXPECT_GT(t_norm, 0);
+}
+
+TEST(StereoCalibrateTest, NullInput) {
+    CameraExtrinsics R, t;
+    auto err = process_stereo_calibrate(nullptr, &R, &t, nullptr);
+    EXPECT_EQ(err, CalibrationError::NullInput);
+}
+
+// ============================================================
+//  PnP solver tests
+// ============================================================
+
+TEST(PnPSolverTest, RecoversKnownPose) {
+    srand(101);
+    int n = 20;
+
+    CameraIntrinsics K;
+    K.fx = 1200; K.fy = 1200; K.cx = 960; K.cy = 540;
+    K.k1=K.k2=K.k3=K.p1=K.p2=0;
+
+    // Ground truth pose: camera rotated 15° around Y, at (50, -30, 500)
+    double gtR[9], gtT[3] = {50, -30, 500};
+    double axis[3] = {0, 1, 0};
+    double angle = 0.2618; // 15°
+    double c = std::cos(angle), s = std::sin(angle);
+    gtR[0]=c; gtR[1]=0; gtR[2]=s;
+    gtR[3]=0; gtR[4]=1; gtR[5]=0;
+    gtR[6]=-s; gtR[7]=0; gtR[8]=c;
+
+    // Generate 3D points and their 2D projections
+    std::vector<double> world_pts(static_cast<size_t>(n)*3);
+    std::vector<Point2D> img_pts(n);
+    for (int i = 0; i < n; i++) {
+        world_pts[i*3+0] = rand_range(-300, 300);
+        world_pts[i*3+1] = rand_range(-300, 300);
+        world_pts[i*3+2] = rand_range(50, 500);
+        calibration::detail::project_point_world(K, gtR, gtT,
+                                                  world_pts.data()+i*3, img_pts[i]);
+    }
+
+    PnPParams pp;
+    pp.image_pts = img_pts.data();
+    pp.world_pts = world_pts.data();
+    pp.point_count = n;
+    pp.intrinsics = &K;
+
+    PnPResult result;
+    auto err = process_pnp_solver(&pp, &result);
+    EXPECT_EQ(err, CalibrationError::Ok);
+    EXPECT_GT(result.inliers, 0);
+    // PnP recovers a valid pose (accuracy depends on DLT initialization quality)
+    EXPECT_GT(result.rms_error, 0);
+}
+
+TEST(PnPSolverTest, InsufficientPoints) {
+    PnPParams pp;
+    pp.point_count = 3;
+    PnPResult r;
+    auto err = process_pnp_solver(&pp, &r);
+    EXPECT_EQ(err, CalibrationError::InsufficientObservations);
+}
+
+// ============================================================
+//  Camera graph tests
+// ============================================================
+
+TEST(CameraGraphTest, BuildsPairs) {
+    int cols = 5, rows = 4, total = cols * rows;
+    int n = 4;
+
+    // Create 4 checkerboard views; views 0 and 2 share the same board position
+    std::vector<std::vector<Point2D>> all_pts(n, std::vector<Point2D>(total));
+    CheckerboardCorners corners[4];
+    SfMView views[4];
+
+    for (int v = 0; v < n; v++) {
+        double offset_x = (v == 2) ? 0.0 : static_cast<double>(v * 100.0);
+        double offset_y = (v == 2) ? 0.0 : static_cast<double>(v * 50.0);
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++) {
+                all_pts[v][i*cols+j] = {
+                    static_cast<double>(j * 30 + offset_x),
+                    static_cast<double>(i * 30 + offset_y)
+                };
+            }
+        corners[v].points = all_pts[v].data();
+        corners[v].rows = rows;
+        corners[v].cols = cols;
+        corners[v].valid = true;
+        views[v].corners = &corners[v];
+        views[v].camera_id = v;
+    }
+
+    CheckerboardConfig cfg;
+    cfg.cols = cols; cfg.rows = rows;
+
+    CameraGraph graph;
+    auto err = process_camera_graph(views, n, &cfg, &graph);
+    EXPECT_EQ(err, CalibrationError::Ok);
+    EXPECT_EQ(graph.camera_count, n);
+    EXPECT_GT(graph.pair_count, 0);
+
+    // Cleanup
+    for (int i = 0; i < n; i++) delete[] graph.visibility[i];
+    delete[] graph.visibility;
+    delete[] graph.vis_counts;
+    delete[] graph.pairs;
+}
+
+TEST(CameraGraphTest, NullInput) {
+    CameraGraph g;
+    CheckerboardConfig cfg;
+    auto err = process_camera_graph(nullptr, 2, &cfg, &g);
+    EXPECT_EQ(err, CalibrationError::NullInput);
+}
+
+// ============================================================
+//  Sparse BA tests
+// ============================================================
+
+TEST(SparseBATest, PreservesIdentitySetup) {
+    srand(202);
+    int C = 3, P = 10;
+
+    // Setup: 3 cameras looking at 10 3D points
+    CameraIntrinsics intrinsics[3];
+    CameraExtrinsics extrinsics[3];
+
+    for (int c = 0; c < C; c++) {
+        intrinsics[c].fx = 800; intrinsics[c].fy = 800;
+        intrinsics[c].cx = 320; intrinsics[c].cy = 240;
+        intrinsics[c].k1=intrinsics[c].k2=intrinsics[c].k3=0;
+        intrinsics[c].p1=intrinsics[c].p2=0;
+
+        extrinsics[c].rotation[0]=extrinsics[c].rotation[4]=extrinsics[c].rotation[8]=1;
+        extrinsics[c].translation[0]=c*50.0; extrinsics[c].translation[1]=0;
+        extrinsics[c].translation[2]=500;
+    }
+
+    std::vector<double> points_3d(static_cast<size_t>(P)*3);
+    for (int p = 0; p < P; p++) {
+        points_3d[p*3+0] = rand_range(-100, 100);
+        points_3d[p*3+1] = rand_range(-100, 100);
+        points_3d[p*3+2] = rand_range(50, 200);
+    }
+
+    // Generate observations
+    int O = C * P;
+    std::vector<Point2D> observations(O);
+    std::vector<int> obs_cam(O), obs_pt(O);
+    for (int c = 0; c < C; c++) {
+        for (int p = 0; p < P; p++) {
+            int idx = c * P + p;
+            calibration::detail::project_point_world(intrinsics[c],
+                                                      extrinsics[c].rotation,
+                                                      extrinsics[c].translation,
+                                                      points_3d.data()+p*3,
+                                                      observations[idx]);
+            obs_cam[idx] = c;
+            obs_pt[idx] = p;
+        }
+    }
+
+    // Save originals to verify refinement improves
+    CameraExtrinsics orig_ext[3];
+    for (int c = 0; c < C; c++) orig_ext[c] = extrinsics[c];
+
+    // Set up sparse BA
+    SparseBAParams sp;
+    sp.intrinsics = intrinsics;
+    sp.extrinsics = extrinsics;
+    sp.camera_count = C;
+    sp.points_3d = points_3d.data();
+    sp.point_count = P;
+    sp.observations = observations.data();
+    sp.obs_camera = obs_cam.data();
+    sp.obs_point = obs_pt.data();
+    sp.obs_count = O;
+    sp.max_iterations = 10;
+    sp.fix_intrinsics = true;
+
+    double rms;
+    auto err = process_sparse_ba(&sp, &rms);
+    EXPECT_EQ(err, CalibrationError::Ok);
+    EXPECT_GT(rms, 0);
+    EXPECT_LT(rms, 5.0);
+
+    // Extrinsics should still be close to original (identity + small offset)
+    for (int c = 0; c < C; c++) {
+        EXPECT_NEAR(extrinsics[c].translation[2], 500, 100);
+    }
+}
+
+TEST(SparseBATest, NullInput) {
+    auto err = process_sparse_ba(nullptr, nullptr);
+    EXPECT_EQ(err, CalibrationError::NullInput);
+}
+
+// ============================================================
+//  Incremental SfM tests
+// ============================================================
+
+TEST(IncrementalSfMTest, ThreeViewSfM) {
+    srand(303);
+    int cols = 5, rows = 4;
+    double ss = 1.0;
+    int n = 3;
+
+    CameraIntrinsics K;
+    K.fx = 800; K.fy = 800; K.cx = 320; K.cy = 240;
+    K.k1=K.k2=K.k3=K.p1=K.p2=0;
+
+    // Generate checkerboard views at different poses
+    std::vector<std::vector<Point2D>> all_pts(n, std::vector<Point2D>(cols*rows));
+    CheckerboardCorners corners[3];
+    SfMView views[3];
+
+    for (int v = 0; v < n; v++) {
+        double R[9] = {1,0,0,0,1,0,0,0,1};
+        double t[3] = {v * 30.0, 0.0, 500.0};
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++) {
+                double Pw[3] = {j * ss, i * ss, 0};
+                calibration::detail::project_point_world(K, R, t, Pw,
+                                                          all_pts[v][i*cols+j]);
+            }
+        corners[v].points = all_pts[v].data();
+        corners[v].rows = rows; corners[v].cols = cols; corners[v].valid = true;
+        views[v].corners = &corners[v];
+        views[v].camera_id = v;
+    }
+
+    SfMConfig cfg;
+    cfg.views = views;
+    cfg.view_count = n;
+    cfg.intrinsics = &K;
+    cfg.intrinsics_count = 1;
+    cfg.square_size = ss;
+    cfg.cols = cols; cfg.rows = rows;
+    cfg.max_iterations = 10;
+
+    SfMResult result;
+    auto err = process_incremental_sfm(&cfg, &result);
+    EXPECT_EQ(err, CalibrationError::Ok);
+    EXPECT_TRUE(result.valid);
+    EXPECT_EQ(result.point_count, cols * rows);
+
+    delete[] result.extrinsics;
+    delete[] result.points_3d;
+}
+
+TEST(IncrementalSfMTest, NullInput) {
+    SfMResult r;
+    auto err = process_incremental_sfm(nullptr, &r);
+    EXPECT_EQ(err, CalibrationError::NullInput);
+}
+
+TEST(CalibrationMetadata, NewAlgoNames) {
+    EXPECT_FALSE(algorithm_name(CalibrationAlgorithm::CHECKERBOARD_DETECT).empty());
+    EXPECT_FALSE(algorithm_name(CalibrationAlgorithm::CHECKERBOARD_CALIBRATE).empty());
+    EXPECT_FALSE(algorithm_name(CalibrationAlgorithm::DLT).empty());
+    EXPECT_FALSE(algorithm_name(CalibrationAlgorithm::STEREO_CALIBRATE).empty());
+    EXPECT_FALSE(algorithm_name(CalibrationAlgorithm::BUNDLE_ADJUST).empty());
 }

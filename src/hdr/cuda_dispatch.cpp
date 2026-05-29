@@ -1,6 +1,8 @@
 #include "hdr/algorithms.hpp"
 #include "hdr_kernels.cuh"
 
+#include <cmath>
+
 #ifdef IM_OPERATOR_HAS_CUDA
 
 #include <cuda_runtime.h>

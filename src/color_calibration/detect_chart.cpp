@@ -18,7 +18,7 @@ ColorCalibrationError process_detect_chart(const uint8_t* input,
     if (!is_valid_dimensions(width, height)) return ColorCalibrationError::InvalidDimensions;
     if (!is_valid_bit_depth(bit_depth)) return ColorCalibrationError::InvalidBitDepth;
     if (channels != 3) return ColorCalibrationError::InvalidChannels;
-    if (width < 40 || height < 30) return ColorCalibrationError::ImageTooSmall;
+    if (width < 40 || height < 30) return ColorCalibrationError::InvalidDimensions;
 
     int max_val = detail::safe_max_val(bit_depth);
     int dark_thresh = static_cast<int>(max_val * 0.15f);
